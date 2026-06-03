@@ -1,0 +1,79 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Web Bluetooth pending connect cancel tester</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 900px; }
+  button { margin: .25rem; padding: .5rem .75rem; }
+  pre { background: #111; color: #ddd; padding: 1rem; min-height: 14rem; white-space: pre-wrap; }
+</style>
+<h1>Web Bluetooth pending connect cancel tester</h1>
+<p>Use with the ESP32-C3 firmware in this repository. Service UUID: <code>9c9f0b6a-8f7d-4d0d-9d30-405029430001</code>.</p>
+<p>
+  <button id="request">Request device</button>
+  <button id="connect">Connect</button>
+  <button id="cancel">Disconnect / cancel pending connect</button>
+  <button id="clear">Clear log</button>
+</p>
+<pre id="log"></pre>
+<script>
+const serviceUuid = '9c9f0b6a-8f7d-4d0d-9d30-405029430001';
+let device;
+let connectPromise;
+
+function log(message) {
+  const line = `${new Date().toISOString()} ${message}`;
+  console.log(line);
+  document.querySelector('#log').textContent += `${line}\n`;
+}
+
+function describeError(error) {
+  return `${error.name}: ${error.message}`;
+}
+
+async function requestDevice() {
+  log('requestDevice()');
+  device = await navigator.bluetooth.requestDevice({
+    filters: [{ services: [serviceUuid] }],
+  });
+  device.addEventListener('gattserverdisconnected', () => {
+    log('gattserverdisconnected event');
+  });
+  log(`selected ${device.name || '(unnamed)'}`);
+}
+
+async function connect() {
+  if (!device) {
+    log('request a device first');
+    return;
+  }
+  if (connectPromise) {
+    log('connect already pending');
+    return;
+  }
+  log('gatt.connect() started');
+  const started = performance.now();
+  connectPromise = device.gatt.connect();
+  try {
+    const server = await connectPromise;
+    log(`gatt.connect() resolved after ${Math.round(performance.now() - started)} ms; connected=${server.connected}`);
+  } catch (error) {
+    log(`gatt.connect() rejected after ${Math.round(performance.now() - started)} ms; ${describeError(error)}`);
+  } finally {
+    connectPromise = undefined;
+  }
+}
+
+function cancelPendingConnect() {
+  if (!device) {
+    log('request a device first');
+    return;
+  }
+  log('gatt.disconnect()');
+  device.gatt.disconnect();
+}
+
+document.querySelector('#request').addEventListener('click', () => requestDevice().catch(error => log(describeError(error))));
+document.querySelector('#connect').addEventListener('click', () => connect());
+document.querySelector('#cancel').addEventListener('click', cancelPendingConnect);
+document.querySelector('#clear').addEventListener('click', () => document.querySelector('#log').textContent = '');
+</script>
